@@ -1,0 +1,86 @@
+{
+  "provider": "openai-codex",
+  "accounts": [],
+  "managedAgents": [
+    "main"
+  ],
+  "concurrencyCapPerAccount": 3,
+  "retryPolicy": {
+    "maxRetriesPerTask": 2,
+    "rollingWindowMinutes": 15,
+    "quarantineOnFailures": 2,
+    "quarantineMinutes": 30
+  },
+  "override": {
+    "enabled": false,
+    "profileId": null
+  },
+  "focus": {
+    "enabled": false,
+    "project": null
+  },
+  "autoProfileSync": {
+    "enabled": true,
+    "autoEnableNewProfiles": true,
+    "defaultPriority": 1,
+    "defaultProjects": [
+      "project-a",
+      "project-b"
+    ],
+    "alertOnNewProfile": true,
+    "ignoreProfileIds": [
+      "openai-codex:default"
+    ]
+  },
+  "safeSwitch": {
+    "allowGlobalReorderWithoutLease": true
+  },
+  "sessionRebind": {
+    "enabled": true,
+    "disableInAuto": false,
+    "respectUserOverride": true,
+    "lookbackMinutes": 1440,
+    "agents": [
+      "main"
+    ],
+    "controlSurfacePrimary": true,
+    "controlSurfaceLeaseSec": 900
+  },
+  "routing": {
+    "hysteresisMinScoreDelta": 25.0,
+    "hysteresisMinHoldMinutes": 10
+  },
+  "usageProbe": {
+    "perProfileWhenIdle": true,
+    "agentId": "main",
+    "retainProbeMinutes": 180,
+    "capacityHeadroomTopN": 2
+  },
+  "commandTimeoutSec": 30,
+  "alerts": {
+    "telegram": {
+      "enabled": false,
+      "channel": "telegram",
+      "target": "REPLACE_TELEGRAM_CHAT_ID"
+    },
+    "discord": {
+      "enabled": false,
+      "channel": "discord",
+      "target": "channel:REPLACE_DISCORD_CHANNEL_ID"
+    }
+  },
+  "weights": {
+    "focusAffinity": 40,
+    "remainingCapacity": 30,
+    "lowLeases": 20,
+    "priority": 10
+  },
+  "timeouts": {
+    "healthSec": 5,
+    "truthSec": 15
+  },
+  "healthChecks": {
+    "truthFreshSeconds": 900,
+    "truthStaleSeconds": 1800
+  }
+}
