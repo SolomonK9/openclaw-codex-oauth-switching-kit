@@ -1,15 +1,14 @@
 # OpenClaw Codex OAuth Switching Kit
 
-Technical OpenClaw kit for **automatic OpenAI Codex OAuth account switching**.
+**Automatic OpenAI Codex OAuth account switching for OpenClaw** — built for operators hitting usage limits, juggling multiple authenticated accounts, and trying to keep multi-agent workflows alive **without rebuilding everything around API keys**.
 
-This package is built for operators who hit **Codex/ChatGPT usage limits**, juggle multiple authenticated accounts, and want automatic routing across a shared account pool **without rebuilding everything around API keys**.
+If your current workflow involves:
+- hitting Codex/ChatGPT limits
+- manually rotating accounts to keep work moving
+- losing context when sessions drift across account changes
+- running multiple agents against too little authenticated capacity
 
-It addresses pain points like:
-- manually switching between Codex-authenticated accounts when limits hit
-- losing time and context during account rotation
-- running multiple agents against a limited pool of OAuth-authenticated accounts
-- keeping sessions aligned when the best account changes underneath the system
-- avoiding API-key-only redesigns when you want to operate on top of existing Codex OAuth accounts
+this kit is the operational layer that fixes that mess.
 
 ## What it ships
 - `scripts/oauth_pool_router.py` — shared Codex OAuth pool router with health-aware selection, lease pinning, retry/quarantine logic, and session rebinding
