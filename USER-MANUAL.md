@@ -1,16 +1,16 @@
-# OAuth Switching Kit — User Manual
+# OpenClaw Codex OAuth Routing Kit — User Manual
 
-This kit gives OpenClaw a reusable multi-account OAuth pool with:
-- lease pinning (no mid-task profile switching)
-- health/usage-aware routing
-- manual override + auto mode
+This kit gives OpenClaw a reusable multi-account Codex OAuth routing layer with:
+- lease pinning (no mid-task account switching)
+- health and usage-aware routing
+- manual override plus automatic mode
 - background tick / lease sync automation
-- **session rebinding** so recent sessions stop drifting behind the live top profile
+- session rebinding so recent sessions stop drifting behind the live top account
 
 ## 1) Install
 
 ```bash
-cd ~/oauth-switching-kit
+cd ~/openclaw-oauth-switching-kit
 ./scripts/install_oauth_switching.sh ~/.openclaw/workspace
 ```
 
@@ -28,11 +28,11 @@ Minimum edits:
 - replace placeholder values like `REPLACE_TELEGRAM_CHAT_ID` in any lifecycle script/config you plan to use
 
 Notes:
-- `sessionRebind.enabled=true` keeps recent auto-bound sessions aligned with the current winning profile
+- `sessionRebind.enabled=true` keeps recent auto-bound sessions aligned with the current winning account
 - `sessionRebind.respectUserOverride=true` preserves deliberate user-set overrides
 - `sessionRebind.lookbackMinutes` bounds how far back maintenance will touch sessions
 
-## 3) Capture OAuth accounts
+## 3) Capture Codex OAuth accounts
 
 For each account:
 
@@ -51,7 +51,7 @@ python3 ~/.openclaw/workspace/ops/scripts/oauth_pool_router.py tick
 ## 4) Enable background automation
 
 ```bash
-cd ~/oauth-switching-kit
+cd ~/openclaw-oauth-switching-kit
 ./scripts/setup_oauth_crons.sh ~/.openclaw/workspace
 ```
 
@@ -59,18 +59,17 @@ Default jobs:
 - OAuth Pool Router Tick
 - OAuth Lease Sync
 
-Optional hardening jobs are intentionally not auto-installed in v1. Add them only after the core system is working cleanly in your environment.
+Optional hardening jobs are intentionally not auto-installed in v1. Add them only after the core routing layer is working cleanly in your environment.
 
+## 4b) Account lifecycle support
 
-## 4b) OAuth lifecycle support
-
-This kit includes onboarding + Telegram reauth helpers:
+This kit includes onboarding and Telegram reauth helpers:
 - `onboard_oauth_account.py`
 - `oauth_telegram_reauth.py`
 - `oauth_telegram_bridge.py`
 
-These are useful if you want guided account add/reauth flows over Telegram.
-If you do **not** use Telegram for this workflow, the switching core still works without using these helpers.
+These are useful if you want guided account add / reauth flows over Telegram.
+If you do **not** use Telegram for this workflow, the routing core still works without these helpers.
 
 Before using them, replace placeholder targets such as:
 - `REPLACE_TELEGRAM_CHAT_ID`
@@ -91,20 +90,20 @@ python3 ~/.openclaw/workspace/ops/scripts/oauth_command_router.py "/oauth auto"
 ```
 
 What they do:
-- `/oauth status` — router state + ordering + account health
+- `/oauth status` — routing state, ordering, and account health
 - `/oauth list` — known accounts
 - `/oauth probe` — per-profile usage refresh
-- `/oauth use <label>` — force a specific profile to the top
+- `/oauth use <label>` — force a specific account to the top
 - `/oauth auto` — clear manual override and return to automatic routing
 
 ## 6) Session rebinding behavior
 
 During `tick` / `watchdog`, the router can update recent session auth overrides when:
 - the session matches the managed provider
-- the override source is automatic (not explicit user choice)
+- the override source is automatic (not an explicit user choice)
 - the session is inside the configured rebinding lookback window
 
-This closes the stale-session failure mode where auth order changed correctly but a previously auto-bound session kept using an older profile.
+This closes the stale-session failure mode where auth order changed correctly but a previously auto-bound session kept using an older account.
 
 ## 7) Verification
 

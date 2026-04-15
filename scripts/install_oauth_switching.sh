@@ -37,7 +37,7 @@ fi
 python3 -m py_compile "$SCRIPTS_DIR/oauth_pool_router.py" "$SCRIPTS_DIR/oauth_command_router.py" "$SCRIPTS_DIR/oauth_lease_sync.py" "$SCRIPTS_DIR/oauth_profile_capture.py" "$SCRIPTS_DIR/onboard_oauth_account.py" "$SCRIPTS_DIR/oauth_telegram_reauth.py" "$SCRIPTS_DIR/oauth_telegram_bridge.py"
 
 echo
-echo "✅ OAuth switching kit installed into: $WORKSPACE"
+echo "✅ Codex OAuth routing kit installed into: $WORKSPACE"
 echo "Next steps:"
 echo "1) Edit: $STATE_DIR/oauth-pool-config.json"
 echo "   - set alerts.telegram/discord targets"

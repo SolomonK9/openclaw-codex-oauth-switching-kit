@@ -1,29 +1,33 @@
-# OpenClaw Codex OAuth Switching Kit
+# OpenClaw Codex OAuth Routing Kit
 
-**Automatic OpenAI Codex OAuth account switching for OpenClaw** — built for operators hitting usage limits, juggling multiple authenticated accounts, and trying to keep multi-agent workflows alive **without rebuilding everything around API keys**.
+**Smart Codex OAuth routing for OpenClaw**.
 
-If your current workflow involves:
-- hitting Codex/ChatGPT limits
-- manually rotating accounts to keep work moving
-- losing context when sessions drift across account changes
-- running multiple agents against too little authenticated capacity
+This system is built for a simple reality: **Codex account limits are not enough for serious usage**.
 
-this kit is the operational layer that fixes that mess.
+Instead of manually juggling accounts or getting pushed into API-key cost and infrastructure just to keep work moving, you can add more Codex-authenticated accounts and let the system automatically route work to the best available account at the moment.
+
+That means:
+- less manual switching
+- better workflow continuity
+- smarter account utilization
+- and a much cleaner path to high-throughput OpenClaw usage without API-key architecture
+
+If you are running multiple agents, hitting account ceilings, or trying to stretch authenticated capacity further without turning your stack into an API-billing machine, this is the control layer for that.
 
 ## What it ships
-- `scripts/oauth_pool_router.py` — shared Codex OAuth pool router with health-aware selection, lease pinning, retry/quarantine logic, and session rebinding
-- `scripts/oauth_command_router.py` — `/oauth ...` operator command surface
+- `scripts/oauth_pool_router.py` — routing engine for account scoring, lease pinning, health-aware selection, and session rebinding
+- `scripts/oauth_command_router.py` — operator command entry point for `/oauth ...` workflows
 - `scripts/oauth_profile_capture.py` — capture the current Codex OAuth login into a reusable named profile
-- `scripts/oauth_lease_sync.py` — lane lifecycle → lease sync bridge (disable if you do not use lane lifecycle files)
-- `scripts/onboard_oauth_account.py` — add or re-auth a Codex OAuth account into the pool
-- `scripts/oauth_telegram_reauth.py` — Telegram-driven reauth runner for Codex OAuth lifecycle support
-- `scripts/oauth_telegram_bridge.py` — message handoff bridge used by Telegram reauth/onboarding flow
-- `scripts/install_oauth_switching.sh` — install into a workspace
-- `scripts/setup_oauth_crons.sh` — add core background cron jobs
-- `scripts/verify_safe_bundle.sh` — verify the kit contains no obvious local secrets/artifacts
-- `templates/*.json` — starter config + lane/project mapping templates
-- `USER-MANUAL.md` — operator guide
-- `PUBLIC-NOTES.md` — public scope notes
+- `scripts/oauth_lease_sync.py` — keep lane/project lease state aligned with the routing layer
+- `scripts/onboard_oauth_account.py` — guided account add / reauth helper for bringing accounts into the pool
+- `scripts/oauth_telegram_reauth.py` — Telegram-driven reauth helper for OAuth lifecycle support
+- `scripts/oauth_telegram_bridge.py` — Telegram message bridge used by the onboarding / reauth flow
+- `scripts/install_oauth_switching.sh` — install the routing kit into an OpenClaw workspace
+- `scripts/setup_oauth_crons.sh` — install the core background automation jobs
+- `scripts/verify_safe_bundle.sh` — verify the bundle does not contain obvious secrets or local artifacts
+- `templates/*.json` — starter templates for pool config and lease/project mapping
+- `USER-MANUAL.md` — setup and operator guide
+- `PUBLIC-NOTES.md` — public scope, boundaries, and sharing notes
 
 ## Fast install
 ```bash
@@ -43,24 +47,24 @@ python3 ~/.openclaw/workspace/ops/scripts/oauth_pool_router.py tick
 ./scripts/setup_oauth_crons.sh ~/.openclaw/workspace
 ```
 
-This installs the **core** background jobs only. Optional hardening jobs (verifier / safety sentinel / capacity watch) should be added separately once the core system is working cleanly in your environment.
+This installs the **core** background jobs only. Optional hardening jobs should be added separately once the routing layer is working cleanly in your environment.
 
 ## Why this exists
-If you are running Codex-authenticated workflows, the usual pain is not just "limits" — it is the operational mess around them:
+Once usage gets serious, a single Codex-authenticated account stops being enough. The real problem is not just limits — it is the operational mess around them:
 - which account still has headroom?
-- which sessions are still pinned to an older account?
-- how do multiple agents share a pool without stepping on each other?
-- how do you reauth/onboard accounts without hand-editing everything?
+- which sessions are pinned to an older account?
+- how do multiple agents share capacity without stepping on each other?
+- how do you reauth or onboard accounts without hand-editing everything?
 
-This kit is the answer to that operational layer.
+This kit is the control layer that fixes that mess.
 
-## Key operator behavior
-- **Automatic account switching:** choose from a shared Codex OAuth pool instead of manually rotating accounts
+## Key behavior
+- **Automatic routing:** work is routed to the best available account instead of being rotated manually
 - **Lease pinning:** active work stays on the same account mid-task
-- **Health-aware routing:** the router reorders accounts based on availability, verification, and capacity signals
+- **Health-aware selection:** account ordering reacts to availability, verification, and capacity signals
 - **Session rebinding:** recent auto-bound sessions follow the current best account without overriding explicit user choices
-- **OAuth lifecycle support:** onboarding and Telegram reauth are included as part of the switching lifecycle surface
-- **No private auth/state in the repo:** the package is designed to be shareable without shipping live auth stores or state files
+- **OAuth lifecycle support:** onboarding and Telegram reauth are included as part of the account lifecycle surface
+- **Shareable bundle:** the public package is designed to ship without live auth stores or machine-specific state
 
 ## Before publishing or forking
 ```bash
@@ -68,6 +72,6 @@ This kit is the answer to that operational layer.
 ```
 
 ## Scope note
-This is a **technical OpenClaw kit**, not a magical one-click installer. It is meant for users who are comfortable editing config/templates, replacing placeholders, and running install/verify commands.
+This is a **technical OpenClaw kit**, not one-click magic. It is meant for operators who are comfortable editing config/templates, replacing placeholders, and running install/verify commands.
 
 Read `USER-MANUAL.md` for full setup and operator commands.
