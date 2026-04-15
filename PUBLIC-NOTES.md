@@ -1,15 +1,22 @@
-# Public Notes — OAuth Switching Kit
+# Public Notes — OpenClaw Codex OAuth Switching Kit
 
 ## What this package is
-A technical OpenClaw switching kit for shared multi-account OAuth routing, lease pinning, session rebinding, and basic OAuth lifecycle operations.
+A technical OpenClaw kit for **OpenAI Codex OAuth** account pooling and automatic switching.
 
-## What it is not
+It is designed for operators who:
+- hit Codex/ChatGPT limits
+- juggle multiple Codex-authenticated accounts
+- want automatic switching and session stability
+- want multi-account routing without moving to an API-key-only architecture
+
+## What this package is not
 - Not a one-click magical installer
 - Not Solomon's full internal operator-control stack
 - Not every watchdog/hardening layer used in the private deployment
+- Not a promise of perfect or unlimited Codex capacity
 
 ## Included
-- core switching router + command layer
+- core Codex OAuth switching router + command layer
 - profile capture
 - lease sync
 - onboarding + Telegram reauth/bridge helpers
@@ -27,3 +34,10 @@ Before use, replace placeholders and review:
 - alert targets
 - Telegram target placeholders if using Telegram lifecycle flows
 - lease/project mappings if using lane lifecycle integration
+
+## Publishing / forking hygiene
+Before publishing, forking, or repackaging:
+- do not include live auth stores
+- do not include live state, backups, or lock files
+- do not include real operator IDs / chat IDs / home paths
+- run `./scripts/verify_safe_bundle.sh`
