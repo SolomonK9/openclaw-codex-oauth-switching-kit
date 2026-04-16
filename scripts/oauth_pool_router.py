@@ -3293,20 +3293,33 @@ def _format_operator_alert(
         f"{what}",
         f"Impact: {impact or default_impact.get(sev, default_impact['INFO'])}",
         f"Auto-action: {auto_action or 'Router monitoring and safeguards are active.'}",
-        f"Your action: {your_action or ('None right now.' if sev == 'INFO' else 'Run /oauth status if this repeats.')}",
+        f"🧠 {your_action or ('None right now.' if sev == 'INFO' else 'Run /oauth status if this repeats.')}",
     ]
     lines.extend(_format_status_lines(status))
     return "\n".join(lines)
 
 
+def _advisor_brain_text(advisor: Dict[str, Any]) -> str:
+    recommendation = advisor.get("recommendation") or {}
+    rec_level = str(recommendation.get("level") or "").lower().strip()
+    rec_message = str(recommendation.get("message") or "").strip()
+    if rec_level == 'critical':
+        return rec_message or 'Add 1-2 accounts now.'
+    if rec_level == 'warning':
+        return rec_message or 'Add capacity soon.'
+    if rec_level == 'info' and rec_message:
+        return rec_message
+    return 'No new accounts needed right now.'
+
+
 def _advisor_capacity_status(advisor: Dict[str, Any]) -> str:
     pool = advisor.get("poolSummary") or {}
-    action = pool.get("action") or advisor.get("headline") or "Monitor pool health."
+    action = _advisor_brain_text(advisor)
     return "; ".join([
         f"capacity=CPH {float(pool.get('compositeHealthPct', 0.0)):.1f}%",
         f"ready={int(pool.get('eligibleCount', 0))}/{int(pool.get('enabledCount', 0))}",
         f"healthy={int(pool.get('healthyCount', 0))}/{int(pool.get('enabledCount', 0))}",
-        f"action={action}",
+        f"brain={action}",
     ])
 
 
@@ -5306,7 +5319,7 @@ def emit_lifecycle_advisor_alerts(config: Dict[str, Any], state: Dict[str, Any],
             code=code,
             impact="Pool lifecycle advisor detected capacity pressure.",
             auto_action="Router continues balancing across healthy eligible profiles.",
-            your_action="Add 1-2 accounts based on the recommendation severity.",
+            your_action=_advisor_brain_text(advisor),
             status=_advisor_capacity_status(advisor),
         )
         alerts_state = state.setdefault("alerts", {})
