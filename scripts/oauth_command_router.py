@@ -12,6 +12,7 @@ Examples:
 """
 
 from __future__ import annotations
+import argparse
 import json
 import shlex
 import subprocess
@@ -119,8 +120,11 @@ def cmd_probe():
     return rc
 
 
-def cmd_status():
-    rc, so, se = run(['python3', str(ROUTER), 'status'])
+def cmd_status(json_mode: bool = False):
+    cmd = ['python3', str(ROUTER), 'status']
+    if json_mode:
+        cmd.append('--json')
+    rc, so, se = run(cmd)
     if so:
         print(so)
     if se:
@@ -128,8 +132,17 @@ def cmd_status():
     return rc
 
 
+def parse_args():
+    ap = argparse.ArgumentParser(add_help=False)
+    ap.add_argument('--json', action='store_true', dest='json_mode')
+    ap.add_argument('--session-key')
+    ap.add_argument('command', nargs=argparse.REMAINDER)
+    return ap.parse_args()
+
+
 def main():
-    raw = ' '.join(sys.argv[1:]).strip()
+    args = parse_args()
+    raw = ' '.join(args.command).strip()
     if not raw:
         print('Usage: oauth_command_router.py "/oauth <list|use NAME|auto|status|probe>"')
         return 1
@@ -142,7 +155,7 @@ def main():
         return 1
 
     if len(parts) == 1 or parts[1] == 'status':
-        return cmd_status()
+        return cmd_status(args.json_mode)
     if parts[1] == 'list':
         cmd_list()
         return 0

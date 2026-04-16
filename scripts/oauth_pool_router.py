@@ -908,7 +908,7 @@ def default_config() -> Dict[str, Any]:
             "controlSurfacePrimary": True,
             "controlSurfaceLeaseSec": 900,
             "controlSurfaceStableTargetSeconds": 30,
-            "privilegedSessionKeys": ["agent:main:telegram:direct:1828174896"]
+            "privilegedSessionKeys": []
         },
         "runtimeFailover": {
             "enabled": True,
@@ -2196,7 +2196,7 @@ def observe_usage_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def auth_store_path(agent_id: str) -> Path:
-    return Path(f"/home/jarvis/.openclaw/agents/{agent_id}/agent/auth-profiles.json")
+    return openclaw_home() / "agents" / str(agent_id) / "agent" / "auth-profiles.json"
 
 
 def load_auth_store(agent_id: str = "main") -> Dict[str, Any]:
@@ -2225,7 +2225,7 @@ def sync_auth_profile_from_main(profile_id: str, target_agents: Optional[List[st
     changed: List[str] = []
     for agent_id in targets:
         if agent_id == "main":
-            target_path = Path("/home/jarvis/.openclaw/agents/main/auth-profiles.json")
+            target_path = openclaw_home() / "agents" / "main" / "auth-profiles.json"
             if target_path.exists():
                 try:
                     target_store = json.loads(target_path.read_text())
@@ -3360,7 +3360,7 @@ def send_alert(
             res["channels"][k] = {"ok": False, "skipped": True}
             continue
         channel = str(sink.get("channel") or k)
-        target = str(sink.get("target") or ("1828174896" if k == "telegram" else ""))
+        target = str(sink.get("target") or "")
         if not target:
             res["channels"][k] = {"ok": False, "skipped": True, "reason": "missing_target"}
             continue
@@ -3614,7 +3614,7 @@ def sync_runtime_quarantine_to_auth_store(config: Dict[str, Any], state: Dict[st
     try:
         provider = config.get("provider", "openai-codex")
         agent_id = runtime_auth_agent_id(config)
-        auth_path = Path(f"/home/jarvis/.openclaw/agents/{agent_id}/agent/auth-profiles.json")
+        auth_path = openclaw_home() / "agents" / str(agent_id) / "agent" / "auth-profiles.json"
         out["path"] = str(auth_path)
         if not auth_path.exists():
             out["ok"] = False
@@ -3712,10 +3712,7 @@ def openclaw_home() -> Path:
     candidates = []
     if env:
         candidates.append(Path(env).expanduser())
-    candidates.extend([
-        Path("/home/jarvis/.openclaw"),
-        Path.home() / ".openclaw",
-    ])
+    candidates.append(Path.home() / ".openclaw")
     for candidate in candidates:
         try:
             if candidate.exists():
@@ -3751,7 +3748,7 @@ def session_rebind_settings(config: Dict[str, Any]) -> Dict[str, Any]:
         "controlSurfacePrimary": bool(raw.get("controlSurfacePrimary", True)),
         "controlSurfaceLeaseSec": max(0, int(raw.get("controlSurfaceLeaseSec", 900))),
         "controlSurfaceStableTargetSeconds": max(0, int(raw.get("controlSurfaceStableTargetSeconds", 30))),
-        "privilegedSessionKeys": _dedupe_agents(privileged_session_keys + ["agent:main:telegram:direct:1828174896"]),
+        "privilegedSessionKeys": _dedupe_agents(privileged_session_keys),
     }
 
 
@@ -3912,11 +3909,6 @@ def has_semantic_terminal_dead_state(config: Dict[str, Any], state: Dict[str, An
 
 
 def control_surface_session_keys(agent_id: str) -> List[str]:
-    if str(agent_id) == "main":
-        return [
-            "agent:main:telegram:direct:1828174896",
-            "agent:main:discord:channel:1482706815535022122",
-        ]
     return []
 
 
@@ -5512,9 +5504,13 @@ def emit_monitor_alerts(config: Dict[str, Any], state: Dict[str, Any], cli_timeo
         if main_sessions_path.exists():
             main_store = json.loads(main_sessions_path.read_text())
             main_entries, _root, _shape = session_store_entries(main_store)
-            tg_key = "agent:main:telegram:direct:1828174896"
-            tg_entry = main_entries.get(tg_key) if isinstance(main_entries, dict) else None
-            if isinstance(tg_entry, dict):
+            configured_tg_keys = [
+                key for key in main_privileged_session_keys()
+                if isinstance(key, str) and ":telegram:direct:" in key
+            ]
+            tg_key = configured_tg_keys[0] if configured_tg_keys else None
+            tg_entry = main_entries.get(tg_key) if (tg_key and isinstance(main_entries, dict)) else None
+            if tg_key and isinstance(tg_entry, dict):
                 tg_profile = str(tg_entry.get("authProfileOverride") or "").strip() or None
                 tg_source = str(tg_entry.get("authProfileOverrideSource") or "").strip() or None
                 routing_state = (state.get("routing", {}) or {})
