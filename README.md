@@ -32,22 +32,22 @@ If you are running multiple agents, hitting account ceilings, or trying to stret
 ## Fast install
 ```bash
 cd ~/openclaw-oauth-switching-kit
-./scripts/install_oauth_switching.sh ~/.openclaw/workspace
+./oauth-routing install --workspace ~/.openclaw/workspace
+./oauth-routing init --workspace ~/.openclaw/workspace
 ```
 
 Then:
 ```bash
-python3 ~/.openclaw/workspace/ops/scripts/oauth_profile_capture.py --profile-id codex-oauth-<label> --name <Label>
-python3 ~/.openclaw/workspace/ops/scripts/oauth_pool_router.py sync-profiles
-python3 ~/.openclaw/workspace/ops/scripts/oauth_pool_router.py tick
+~/.openclaw/workspace/ops/bin/oauth-routing add-account --workspace ~/.openclaw/workspace --name <Label>
+~/.openclaw/workspace/ops/bin/oauth-routing status --workspace ~/.openclaw/workspace --json
 ```
 
 ## Background automation
 ```bash
-./scripts/setup_oauth_crons.sh ~/.openclaw/workspace
+~/.openclaw/workspace/ops/bin/oauth-routing enable --workspace ~/.openclaw/workspace
 ```
 
-This installs the **core** background jobs only. Optional hardening jobs should be added separately once the routing layer is working cleanly in your environment.
+This installs the **core** background jobs only. The enable path is confirmation-gated and duplicate-safe for the default core job names: existing matching jobs are kept, missing ones are added. Optional hardening jobs should be added separately once the routing layer is working cleanly in your environment.
 
 ## Why this exists
 Once usage gets serious, a single Codex-authenticated account stops being enough. The real problem is not just limits — it is the operational mess around them:
@@ -74,4 +74,4 @@ This kit is the control layer that fixes that mess.
 ## Scope note
 This is a **technical OpenClaw kit**, not one-click magic. It is meant for operators who are comfortable editing config/templates, replacing placeholders, and running install/verify commands.
 
-Read `USER-MANUAL.md` for full setup and operator commands.
+Read `USER-MANUAL.md` for full setup and the new `oauth-routing` command flow.
