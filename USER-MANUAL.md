@@ -77,6 +77,26 @@ If you want plugin/config operations against a specific OpenClaw profile:
 
 ---
 
+## 1b) Quick operator flow
+
+If you just want the shortest honest operator path:
+
+1. run setup
+2. add your first real account
+3. run status
+4. run a maintenance tick
+
+```bash
+./oauth-routing setup --workspace ~/.openclaw/workspace
+~/.openclaw/workspace/ops/bin/oauth-routing add-account --workspace ~/.openclaw/workspace --name <Label>
+~/.openclaw/workspace/ops/bin/oauth-routing status --workspace ~/.openclaw/workspace --json
+python3 ~/.openclaw/workspace/ops/scripts/oauth_pool_router.py tick
+```
+
+That is the shortest path from fresh install to a structurally working routing kit.
+
+---
+
 ## 2) What `setup` writes and stages
 
 ### Router-side workspace files
@@ -312,6 +332,23 @@ Expected outcome:
 - `tick` exits successfully
 
 If the native plugin was enabled successfully, you should also be able to use the native `/oauth` command surface through OpenClaw.
+
+---
+
+## 12b) What “up and running” means
+
+For this package, “up and running” honestly means:
+- routing kit staged into the workspace
+- starter config written successfully
+- scheduler path enabled successfully
+- native plugin staged and, when proven, enabled
+- router status JSON works
+- doctor passes
+
+It does **not** mean:
+- all real accounts are already onboarded
+- every private control-plane job in some other deployment is healthy
+- every environment is frictionless
 
 ---
 

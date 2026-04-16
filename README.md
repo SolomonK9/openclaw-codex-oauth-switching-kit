@@ -100,6 +100,28 @@ That means the package is now much closer to a **guided setup-first product** in
 
 ---
 
+## Quick start for Linux
+
+```bash
+git clone git@github.com:SolomonK9/OpenClaw-Codex-OAuth-Routing-Kit.git
+cd OpenClaw-Codex-OAuth-Routing-Kit
+./oauth-routing setup --workspace ~/.openclaw/workspace
+```
+
+After setup, onboard your first real account:
+
+```bash
+~/.openclaw/workspace/ops/bin/oauth-routing add-account --workspace ~/.openclaw/workspace --name <Label>
+```
+
+Then verify status:
+
+```bash
+~/.openclaw/workspace/ops/bin/oauth-routing status --workspace ~/.openclaw/workspace --json
+```
+
+---
+
 ## Fast start
 
 ```bash
