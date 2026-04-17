@@ -2028,15 +2028,15 @@ def classify_account_effective_state(config: Dict[str, Any], acc: Dict[str, Any]
         }
 
     return {
-        "effectiveState": "AUTH_VALID_BUT_EXHAUSTED",
+        "effectiveState": "CAPACITY_UNKNOWN_HOLD",
         "effectiveReason": "auth_valid_but_capacity_unknown",
         "routableNow": False,
         "eligible": False,
         "healthLabel": "ready_auth_only",
-        "stateLabel": "AUTH_VALID_BUT_EXHAUSTED",
+        "stateLabel": "HOLD",
         "telemetry": telemetry,
         "telemetryFreshness": telemetry_f,
-        "contradiction": {"active": False, "reason": None, "signals": []},
+        "contradiction": {"active": False, "reason": "capacity_unknown", "signals": ["capacity_unknown"]},
     }
 
 
@@ -2369,18 +2369,50 @@ def fetch_openai_codex_usage_for_profile(profile_id: str, *, timeout_sec: int = 
     return result
 
 
-def get_auth_order(provider: str, agent_id: str, timeout_sec: int = 30) -> Optional[List[str]]:
-    rc, out, _ = run_cmd([
+def get_auth_order_payload(provider: str, agent_id: str, timeout_sec: int = 30) -> Optional[Dict[str, Any]]:
+    rc, out, err = run_cmd([
         "openclaw", "models", "auth", "order", "get",
         "--provider", provider,
         "--agent", agent_id,
         "--json",
     ], timeout=timeout_sec)
-    if rc != 0 or not out:
-        return None
+    if not out:
+        if rc == 0 and not err:
+            return None
+        payload: Dict[str, Any] = {
+            "provider": provider,
+            "agentId": agent_id,
+            "returnCode": rc,
+            "raw": out,
+        }
+        if err:
+            payload["stderr"] = err
+        if rc == 124:
+            payload["timedOut"] = True
+        elif rc != 0:
+            payload["commandOk"] = False
+        return payload
     try:
         payload = json.loads(out)
     except Exception:
+        payload = {"raw": out}
+    if not isinstance(payload, dict):
+        payload = {"raw": out}
+    payload.setdefault("provider", provider)
+    payload.setdefault("agentId", agent_id)
+    payload["returnCode"] = rc
+    if err:
+        payload["stderr"] = err
+    if rc == 124:
+        payload["timedOut"] = True
+    elif rc != 0:
+        payload["commandOk"] = False
+    return payload
+
+
+def get_auth_order(provider: str, agent_id: str, timeout_sec: int = 30) -> Optional[List[str]]:
+    payload = get_auth_order_payload(provider, agent_id, timeout_sec=timeout_sec)
+    if not payload:
         return None
     order = payload.get("order")
     return list(order) if isinstance(order, list) else None
@@ -3777,7 +3809,7 @@ def _session_rebind_stronger_reason(current_health: Dict[str, Any], target_healt
         return True
     if current_health.get("contradictory") and not target_health.get("contradictory"):
         return True
-    if current_health.get("effectiveState") in {"REAUTH_REQUIRED", "DEACTIVATED", "AUTH_VALID_BUT_EXHAUSTED", "CONTRADICTORY_HOLD"}:
+    if current_health.get("effectiveState") in {"REAUTH_REQUIRED", "DEACTIVATED", "AUTH_VALID_BUT_EXHAUSTED", "CONTRADICTORY_HOLD", "CAPACITY_UNKNOWN_HOLD"}:
         return True
     return False
 
@@ -4964,6 +4996,8 @@ def capacity_recommendation(config: Dict[str, Any], state: Dict[str, Any]) -> Op
     if enabled == 0:
         return {"level": "critical", "code": "POOL_NO_ENABLED", "message": "No enabled OAuth accounts configured. Add/enable accounts now."}
     if eligible == 0:
+        if hold_count > 0 and exhausted_count == 0 and reauth_required_count == 0:
+            return {"level": "critical", "code": "POOL_NO_ELIGIBLE_CAPACITY_UNKNOWN", "message": f"No eligible OAuth accounts available because {hold_count} auth-valid account(s) lack fresh per-profile usage proof. This is a telemetry/gating issue, not proven exhaustion. Refresh per-profile probe now."}
         if exhausted_count > 0 and reauth_required_count == 0:
             return {"level": "critical", "code": "POOL_NO_ROUTABLE_CAPACITY", "message": f"No routable OAuth accounts available right now. {exhausted_count} account(s) are auth-valid but temporarily exhausted/held; add capacity or wait for reset instead of treating this as reauth-only."}
         if reauth_required_count > 0 and exhausted_count == 0 and hold_count == 0:
@@ -5723,7 +5757,7 @@ def emit_monitor_alerts(config: Dict[str, Any], state: Dict[str, Any], cli_timeo
         effective_state = str(gate.get("effectiveState") or "UNKNOWN")
         prev_profile_state = transition_state.get(f"profile:{pid}:effectiveState")
         recovery_truth = fresh_recovery_truth(config, st)
-        recoverable_prior_states = {"REAUTH_REQUIRED", "DEACTIVATED", "CONTRADICTORY_HOLD", "AUTH_VALID_BUT_EXHAUSTED"}
+        recoverable_prior_states = {"REAUTH_REQUIRED", "DEACTIVATED", "CONTRADICTORY_HOLD", "AUTH_VALID_BUT_EXHAUSTED", "CAPACITY_UNKNOWN_HOLD"}
         if effective_state == "ROUTABLE" and recovery_truth.get("active"):
             if prev_profile_state in recoverable_prior_states:
                 code = "PROFILE_REAUTH_SUCCESS" if prev_profile_state in {"REAUTH_REQUIRED", "DEACTIVATED", "CONTRADICTORY_HOLD"} else "PROFILE_RECOVERED"
@@ -6115,13 +6149,8 @@ def cmd_status(config: Dict[str, Any], state: Dict[str, Any], json_mode: bool) -
     pool_state = "PAUSED" if not eligible_profiles else "ACTIVE"
     pause_message = "⏸️ System Paused: All accounts are exhausted or dead. Please add a new account via terminal to resume." if pool_state == "PAUSED" else None
 
-    rc_o, out_o, _ = run_cmd(["openclaw", "models", "auth", "order", "get", "--provider", provider, "--agent", agent_id, "--json"])
-    order_info = None
-    if rc_o == 0 and out_o:
-        try:
-            order_info = json.loads(out_o)
-        except Exception:
-            order_info = {"raw": out_o}
+    auth_order_timeout = max(20, min(timeout_tier(config, "standard"), 30))
+    order_info = get_auth_order_payload(provider, agent_id, timeout_sec=auth_order_timeout)
 
     raw_runtime_order = []
     reconciled_runtime_order = list(reconciled_runtime)
@@ -7573,7 +7602,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         state = load_validated_json(STATE_PATH, default_state(), validator=validate_state, snapshot_path=STATE_LKG_PATH, kind="state", config_for_sanitize=config)
         ensure_account_state(config, state)
         state["version"] = max(int(state.get("version", 0) or 0), SCHEMA_VERSION)
-        if args.command in {"status", "tick", "watchdog", "health-check"}:
+        if args.command in {"tick", "watchdog", "health-check"}:
             if not is_read_only(config):
                 ingest_runtime_failover_signals(config, state)
                 auto_hygiene_reconcile(config, state, reason=f"pre-dispatch:{args.command}")
