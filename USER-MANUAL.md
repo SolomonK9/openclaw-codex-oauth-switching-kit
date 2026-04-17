@@ -172,6 +172,15 @@ If the supported plugin install/enable path cannot be proven in the target envir
 
 It does **not** claim native `/oauth` is live unless that path is actually proven.
 
+### Telegram slash command visibility
+The bundled plugin is expected to register `/oauth` as a native command surface.
+
+If the plugin is enabled but Telegram still does not show `/oauth` in the slash-command picker:
+- restart the OpenClaw gateway so the updated plugin is reloaded
+- reopen the Telegram chat and type `/` again
+
+If `/oauth` still does not appear after that, treat native Telegram command registration as **not yet proven** in that environment and do not market it as working.
+
 ---
 
 ## 5) Manual commands still exist

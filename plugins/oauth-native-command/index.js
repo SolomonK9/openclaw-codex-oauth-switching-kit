@@ -894,6 +894,7 @@ export default function register(api) {
   ACTIVE_API = api;
   api.registerCommand({
     name: 'oauth',
+    nativeNames: { default: 'oauth' },
     description: 'OAuth pool operator dashboard and controls.',
     acceptsArgs: true,
     handler: async (ctx) => {

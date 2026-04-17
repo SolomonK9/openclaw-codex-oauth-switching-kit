@@ -312,8 +312,18 @@ def verify_plugin_loaded(profile: str | None = None) -> Tuple[bool, str]:
         return False, f"plugins inspect returned invalid JSON: {exc}"
     plugin = payload.get("plugin") or {}
     commands = payload.get("commands") or []
-    if plugin.get("enabled") and "oauth" in commands:
-        return True, "plugin inspect reports enabled native /oauth command"
+    plugin_source = Path(str(plugin.get("source") or "")).expanduser()
+    has_native_names = False
+    if plugin_source.exists():
+        try:
+            source_text = plugin_source.read_text()
+            has_native_names = "nativeNames" in source_text and "oauth" in source_text
+        except Exception:
+            has_native_names = False
+    if plugin.get("enabled") and "oauth" in commands and has_native_names:
+        return True, "plugin inspect reports enabled native /oauth command with nativeNames alias"
+    if plugin.get("enabled") and "oauth" in commands and not has_native_names:
+        return False, "plugin inspect shows /oauth loaded but plugin source is missing nativeNames alias, so Telegram slash discovery may not work"
     return False, f"plugin inspect did not show enabled /oauth command: enabled={plugin.get('enabled')} commands={commands}"
 
 
