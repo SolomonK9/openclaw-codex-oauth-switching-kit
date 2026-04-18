@@ -224,6 +224,15 @@ python3 ~/.openclaw/workspace/ops/scripts/oauth_pool_router.py tick
 
 ## 7) Account lifecycle support
 
+### Telegram-started, terminal-only lifecycle flow
+For this operator setup, `/oauth reauth <account>` and `/oauth add` may be initiated from Telegram, but the actual OAuth/login completion stays in a real terminal session.
+
+Expected behavior:
+- Telegram lets the operator choose the account
+- the command surface returns the exact terminal command to run
+- the OAuth login and completion happen only in that terminal
+- callback URLs are **not** pasted back into Telegram for this flow
+
 This package includes:
 - `onboard_oauth_account.py`
 - `oauth_telegram_reauth.py`

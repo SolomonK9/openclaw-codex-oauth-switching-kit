@@ -23,6 +23,8 @@ from urllib import error as urllib_error, request as urllib_request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
+from openclaw_resolver import OPENCLAW_BIN
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 CONFIG_PATH = BASE_DIR / "ops" / "state" / "oauth-pool-config.json"
 STATE_PATH = BASE_DIR / "ops" / "state" / "oauth-pool-state.json"
@@ -414,6 +416,8 @@ def auth_order_agents(config: Dict[str, Any]) -> List[str]:
 
 def run_cmd(cmd: List[str], timeout: int = 30) -> Tuple[int, str, str]:
     try:
+        if cmd and cmd[0] == "openclaw":
+            cmd = [OPENCLAW_BIN, *cmd[1:]]
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return p.returncode, p.stdout.strip(), p.stderr.strip()
     except FileNotFoundError as e:

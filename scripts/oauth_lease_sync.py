@@ -3,6 +3,8 @@ import argparse
 import json
 import subprocess
 from pathlib import Path
+
+from openclaw_resolver import OPENCLAW_BIN
 from typing import Dict, Any, List
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -78,11 +80,11 @@ def alert_critical(message: str) -> Dict[str, Any]:
     tg_target = targets.get('telegram')
     dc_target = targets.get('discord')
     if tg_target:
-        out['telegram'] = run(['openclaw', 'message', 'send', '--channel', 'telegram', '--target', tg_target, '--message', f'[OAUTH-POOL][CRITICAL] {message}'])
+        out['telegram'] = run([OPENCLAW_BIN, 'message', 'send', '--channel', 'telegram', '--target', tg_target, '--message', f'[OAUTH-POOL][CRITICAL] {message}'])
     else:
         out['telegram'] = {'ok': False, 'skipped': True, 'reason': 'telegram target not configured'}
     if dc_target:
-        out['discord'] = run(['openclaw', 'message', 'send', '--channel', 'discord', '--target', dc_target, '--message', f'[OAUTH-POOL][CRITICAL] {message}'])
+        out['discord'] = run([OPENCLAW_BIN, 'message', 'send', '--channel', 'discord', '--target', dc_target, '--message', f'[OAUTH-POOL][CRITICAL] {message}'])
     else:
         out['discord'] = {'ok': False, 'skipped': True, 'reason': 'discord target not configured'}
     return out

@@ -1,40 +1,12 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const MODULE_DIR = fileURLToPath(new URL('.', import.meta.url));
-const DEFAULT_WORKSPACE_DIR = fileURLToPath(new URL('../../', import.meta.url));
+const WORKSPACE_DIR = fileURLToPath(new URL('../../', import.meta.url));
+const ROUTER_PATH = fileURLToPath(new URL('../../ops/scripts/oauth_command_router.py', import.meta.url));
+const STATE_PATH = fileURLToPath(new URL('../../ops/state/oauth-pool-state.json', import.meta.url));
+const CONFIG_PATH = fileURLToPath(new URL('../../ops/state/oauth-pool-config.json', import.meta.url));
 const CALLBACK_NS = 'oauth';
-let ACTIVE_API = null;
-
-function resolveWorkspaceDir(api) {
-  const pluginCfg = api?.pluginConfig || {};
-  const candidates = [
-    pluginCfg.workspacePath,
-    api?.workspaceDir,
-    process.env.OPENCLAW_WORKSPACE_DIR,
-    process.cwd(),
-    DEFAULT_WORKSPACE_DIR,
-  ];
-  for (const value of candidates) {
-    const raw = String(value || '').trim();
-    if (!raw) continue;
-    return path.resolve(raw);
-  }
-  return path.resolve(MODULE_DIR, '../../');
-}
-
-function resolveRuntimePaths(api = ACTIVE_API) {
-  const workspaceDir = resolveWorkspaceDir(api);
-  const opsDir = path.join(workspaceDir, 'ops');
-  return {
-    workspaceDir,
-    routerPath: path.join(opsDir, 'scripts', 'oauth_command_router.py'),
-    statePath: path.join(opsDir, 'state', 'oauth-pool-state.json'),
-    configPath: path.join(opsDir, 'state', 'oauth-pool-config.json'),
-  };
-}
 
 function toList(value, fallback = []) {
   if (Array.isArray(value)) return value.map((v) => String(v)).filter(Boolean);
@@ -149,12 +121,11 @@ function resolveSessionKey(ctx) {
 }
 
 function runRouter(commandText, ctx = {}) {
-  const runtime = resolveRuntimePaths();
-  const args = [runtime.routerPath, '--json', commandText];
+  const args = [ROUTER_PATH, '--json', commandText];
   const sessionKey = resolveSessionKey(ctx);
   if (sessionKey) args.push('--session-key', sessionKey);
   const res = spawnSync('python3', args, {
-    cwd: runtime.workspaceDir,
+    cwd: WORKSPACE_DIR,
     encoding: 'utf8',
     timeout: 120000,
     env: process.env,
@@ -193,8 +164,8 @@ function isAllowed(ctx, api) {
   return `channel not supported (${ctx.channel || 'unknown'})`;
 }
 function deriveLegacySnapshot() {
-  const config = readJson(resolveRuntimePaths().configPath, {});
-  const state = readJson(resolveRuntimePaths().statePath, {});
+  const config = readJson(CONFIG_PATH, {});
+  const state = readJson(STATE_PATH, {});
   const defs = new Map((Array.isArray(config.accounts) ? config.accounts : []).map((a) => [String(a.profileId || ''), a]));
   const accounts = state.accounts && typeof state.accounts === 'object' ? state.accounts : {};
   const override = state.override && typeof state.override === 'object' ? state.override : {};
@@ -345,60 +316,63 @@ function routerStatusSnapshot(liveStatus = null, ctx = {}) {
       liveStatus = null;
     }
   }
-  const state = readJson(resolveRuntimePaths().statePath, {});
-  const accounts = state.accounts && typeof state.accounts === 'object' ? state.accounts : {};
-  const routing = state.routing && typeof state.routing === 'object' ? state.routing : {};
-  const currentTarget = String(routing.currentTarget || routing.selectedTarget || '');
+  const state = readJson(STATE_PATH, {});
   const nowMs = Date.now();
-  const rows = Object.entries(accounts).map(([profileId, acc]) => {
-    const auth = acc.auth || {};
-    const verification = acc.verification || {};
-    const health = acc.health || {};
-    const usage = acc.usage || {};
-    const authStatus = String(auth.status || 'UNKNOWN').toUpperCase();
-    const verifyStatus = String(verification.status || 'UNKNOWN').toUpperCase();
-    const stage = String(health.stage || '').toLowerCase();
-    const five = typeof usage.fiveHourRemaining === 'number' ? usage.fiveHourRemaining : null;
-    const week = typeof usage.weekRemaining === 'number' ? usage.weekRemaining : null;
-    const observedAt = usage.observedAt || health.observedAt || null;
-    const expiresAt = typeof health.expiresAt === 'number' ? health.expiresAt : null;
-    const expired = health.expired === true || stage === 'expired';
-    const daysLeft = expiresAt ? (expiresAt - nowMs) / 86400000 : null;
-    const reauthNow = expired || authStatus === 'DEAD' || authStatus === 'UNAUTHORIZED' || authStatus === 'AUTH';
-    const reauthSoon = !reauthNow && typeof daysLeft === 'number' && daysLeft <= 2;
-    const exhausted = (typeof five === 'number' && five <= 0) || (typeof week === 'number' && week <= 0);
-    const telemetryUnauthorized = !reauthNow && authStatus === 'ALIVE' && verifyStatus === 'VERIFIED' && String(usage.reason || '').toLowerCase() === 'http_401';
-    const ready = verifyStatus === 'VERIFIED' && !reauthNow && !exhausted && !telemetryUnauthorized;
-    const authOnly = !ready && !reauthNow && !exhausted && authStatus === 'ALIVE';
-    const healthy = !reauthNow && !exhausted && !telemetryUnauthorized && (ready || authOnly || stage === 'healthy' || stage === 'ready');
+  const canonicalRows = Array.isArray(liveStatus?.accountInventory)
+    ? liveStatus.accountInventory
+    : (Array.isArray(liveStatus?.accountRows) ? liveStatus.accountRows : []);
+  const fallbackAccounts = state.accounts && typeof state.accounts === 'object' ? Object.entries(state.accounts) : [];
+  const runtimeHead = liveStatus?.runtimeHead || null;
+  const policyHead = liveStatus?.policyHead || null;
+  const controlHead = liveStatus?.controlHead || liveStatus?.targetProfileId || null;
+  const rowsSource = canonicalRows.length ? canonicalRows.map((row) => [String(row.profileId || ''), row]) : fallbackAccounts;
+  const rows = rowsSource.map(([profileId, raw]) => {
+    const row = raw && typeof raw === 'object' ? raw : {};
+    const authStatus = String(row.authStatus || row.tokenStatus || row.auth?.status || 'UNKNOWN').toUpperCase();
+    const stage = String(row.healthStage || row.health?.stage || '').toLowerCase();
+    const five = typeof row.fiveHourRemaining === 'number' ? row.fiveHourRemaining : (typeof row.usage?.fiveHourRemaining === 'number' ? row.usage.fiveHourRemaining : null);
+    const week = typeof row.weekRemaining === 'number' ? row.weekRemaining : (typeof row.usage?.weekRemaining === 'number' ? row.usage.weekRemaining : null);
+    const observedAt = row.usageObservedAt || row.observedAt || row.usage?.observedAt || row.health?.observedAt || null;
+    const expiresAtRaw = row.expiresAt ?? row.health?.expiresAt ?? null;
+    const expiresAt = parseExpiry(expiresAtRaw);
+    const daysLeft = expiresAt ? (expiresAt.getTime() - nowMs) / 86400000 : (typeof row.daysLeft === 'number' ? row.daysLeft : null);
+    const expired = row.expired === true || stage === 'expired' || (typeof daysLeft === 'number' && daysLeft <= 0);
+    const reauthNow = row.reauthNeeded === true || expired || authStatus === 'DEAD' || authStatus === 'UNAUTHORIZED' || authStatus === 'AUTH';
+    const reminderLevel = String(row.reauthReminderLevel || '').toLowerCase();
+    const reauthSoon = !reauthNow && (reminderLevel === '1d' || reminderLevel === '2d' || (typeof daysLeft === 'number' && daysLeft <= 2));
+    const routingState = String(row.routingState || '').toUpperCase();
+    const routingReason = String(row.routingReason || row.healthLabel || '').toLowerCase();
+    const exhausted = String(row.capacityState || '').toLowerCase() === 'capacity_exhausted' || routingReason.includes('capacity') || routingReason.includes('exhausted');
+    const authOnly = routingState === 'AUTH_ONLY';
+    const ready = row.ready === true || routingState === 'ROUTABLE' || routingState === 'READY';
     let dot = '⚪';
     if (ready) dot = '🟢';
     else if (reauthNow) dot = '🔴';
     else if (reauthSoon) dot = '🟡';
     else if (exhausted) dot = '⚫';
-    else if (telemetryUnauthorized) dot = '🟡';
     else if (authOnly) dot = '🟠';
-    let stateLabel = 'unknown';
-    if (reauthNow) stateLabel = expired ? 'expired' : 'dead';
-    else if (telemetryUnauthorized) stateLabel = 'manual check required';
-    else if (reauthSoon) stateLabel = `reauth ${daysLeft <= 1 ? '1d' : '2d'}`;
-    else if (exhausted) stateLabel = typeof week === 'number' && week <= 0 ? 'weekly exhausted' : '5h exhausted';
-    else if (ready) stateLabel = 'ready';
-    else if (authOnly) stateLabel = 'auth only';
-    else if (stage) stateLabel = stage;
+    let stateLabel = String(row.stateLabel || '').trim();
+    if (!stateLabel) {
+      if (reauthNow) stateLabel = expired ? 'expired' : 'dead';
+      else if (reauthSoon) stateLabel = `reauth ${daysLeft <= 1 ? '1d' : '2d'}`;
+      else if (exhausted) stateLabel = typeof week === 'number' && week <= 0 ? 'weekly exhausted' : '5h exhausted';
+      else if (ready) stateLabel = 'ready';
+      else if (authOnly) stateLabel = 'auth only';
+      else if (routingReason) stateLabel = routingReason;
+      else if (stage) stateLabel = stage;
+      else stateLabel = 'unknown';
+    }
     let expiryText = '';
-    if (typeof daysLeft === 'number' && daysLeft > 0) expiryText = `expires in ${shortIn(daysLeft * 86400000, 'unknown')}`;
-    else if (reauthNow && expired) expiryText = `expired ${shortIn(Math.abs(daysLeft || 0) * 86400000, 'unknown')} ago`;
-    let resetText = '';
-    if (exhausted) { if (typeof week === 'number' && week <= 0) { if (usage.weekExhaustionState === 'confirmed_exhausted') resetText = fmtReset(usage.weekResetAtDerived || usage.weekResetAt, 'week'); else if (usage.weekExhaustionState === 'candidate_exhausted') resetText = 'wk exhaustion confirming'; else if (usage.weekExhaustionState === 'candidate_recovered') resetText = 'wk recovery confirming'; else resetText = 'wk reset unavailable'; } else { resetText = fmtReset(usage.fiveHourResetAt, '5h'); } }
+    if (expiresAt && typeof daysLeft === 'number' && daysLeft > 0) expiryText = `expires in ${shortIn(daysLeft * 86400000, 'unknown')}`;
+    else if (expired) expiryText = `expired ${shortIn(Math.abs((daysLeft || 0) * 86400000), 'unknown')} ago`;
     return {
       profileId: String(profileId),
-      name: shortName(profileId),
-      enabled: acc.enabled !== false,
+      name: String(row.name || shortName(profileId)),
+      enabled: row.enabled !== false,
       dot,
       ready,
       authOnly,
-      healthy,
+      healthy: row.healthy === true || (!expired && (ready || authOnly || stage === 'healthy' || stage === 'ready')),
       reauthNow,
       reauthSoon,
       exhausted,
@@ -407,17 +381,17 @@ function routerStatusSnapshot(liveStatus = null, ctx = {}) {
       weekRemaining: week,
       observedAt,
       expiryText,
-      resetText,
-      expiresAt,
+      resetText: String(row.resetText || ''),
+      expiresAt: expiresAt ? expiresAt.toISOString() : null,
       daysLeft,
-      activeLeaseCount: Number(acc.activeLeaseCount || 0),
-      isActive: String(profileId) === currentTarget,
-      authSource: auth.source || null,
-      usageSource: usage.source || null,
-      usageTrust: usage.trust || null,
-      frontloadedProfileId: usage.frontloadedProfileId || null,
-      telemetryMismatch: usage.frontloadedProfileId && String(usage.frontloadedProfileId) !== String(profileId),
-      telemetryUnauthorized,
+      activeLeaseCount: Number(row.activeLeaseCount || row.leases || 0),
+      isActive: String(profileId) === String(runtimeHead || ''),
+      authSource: row.authSource || row.auth?.source || null,
+      usageSource: row.usageSource || row.usage?.source || null,
+      usageTrust: row.usageTrust || row.usage?.trust || null,
+      frontloadedProfileId: row.frontloadedProfileId || row.usage?.frontloadedProfileId || null,
+      telemetryMismatch: !!(row.frontloadedProfileId && String(row.frontloadedProfileId) !== String(profileId)),
+      telemetryUnauthorized: false,
     };
   });
   rows.sort((a, b) => {
@@ -435,69 +409,51 @@ function routerStatusSnapshot(liveStatus = null, ctx = {}) {
     const wa = typeof a.weekRemaining === 'number' ? a.weekRemaining : -1;
     const wb = typeof b.weekRemaining === 'number' ? b.weekRemaining : -1;
     if (wa !== wb) return wb - wa;
-    const fa = typeof a.fiveHourRemaining === 'number' ? a.fiveHourRemaining : -1;
-    const fb = typeof b.fiveHourRemaining === 'number' ? b.fiveHourRemaining : -1;
-    if (fa !== fb) return fb - fa;
     return a.name.localeCompare(b.name);
   });
-  const localReadyCount = rows.filter((r) => r.ready).length;
-  const manualCheckCount = rows.filter((r) => r.telemetryUnauthorized).length;
-  const localHealthyCount = rows.filter((r) => r.healthy).length;
-  const reauthNowCount = rows.filter((r) => r.reauthNow).length;
-  const reauthWarnCount = rows.filter((r) => r.reauthSoon).length;
-  const localExhaustedCount = rows.filter((r) => r.exhausted).length;
-  const deadCount = rows.filter((r) => r.reauthNow).length;
-  const leaseCount = rows.reduce((a, r) => a + r.activeLeaseCount, 0);
   const avg = (vals) => {
     const nums = vals.filter((v) => typeof v === 'number');
     if (!nums.length) return null;
     return Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
   };
+  const poolSummary = liveStatus && typeof liveStatus.raw?.poolSummary === 'object' ? liveStatus.raw.poolSummary : (liveStatus?.poolSummary || {});
+  const advisor = liveStatus && typeof liveStatus.raw?.lifecycleAdvisor === 'object' ? liveStatus.raw.lifecycleAdvisor : (liveStatus?.lifecycleAdvisor || {});
+  const advisorRecommendation = advisor && typeof advisor.recommendation === 'object' ? advisor.recommendation : {};
+  const readyCount = rows.filter((r) => r.ready).length;
+  const healthyCount = rows.filter((r) => r.healthy && !r.reauthNow).length;
+  const reauthNowCount = Number(liveStatus?.reauthNowCount || rows.filter((r) => r.reauthNow).length);
+  const reauthWarnCount = Number(liveStatus?.reauthWarnCount || rows.filter((r) => r.reauthSoon).length);
+  const exhaustedCount = rows.filter((r) => r.exhausted).length;
+  const deadCount = rows.filter((r) => r.reauthNow).length;
+  const manualCheckCount = rows.filter((r) => r.telemetryUnauthorized).length;
+  const leaseCount = Number(liveStatus?.activeLeaseCount || rows.reduce((a, r) => a + r.activeLeaseCount, 0));
   const avg5 = avg(rows.filter((r) => !r.reauthNow).map((r) => r.fiveHourRemaining));
   const avgWeek = avg(rows.filter((r) => !r.reauthNow).map((r) => r.weekRemaining));
-  const alertFamilies = state.alerts && typeof state.alerts.families === 'object' ? state.alerts.families : {};
-  const advisorFamily = alertFamilies.advisor_add && typeof alertFamilies.advisor_add === 'object' ? alertFamilies.advisor_add : null;
-  const advisorMetric = advisorFamily && typeof advisorFamily.metric === 'number' ? Math.abs(advisorFamily.metric) : null;
-  const poolSummary = liveStatus && typeof liveStatus.poolSummary === 'object' ? liveStatus.poolSummary : {};
-  const advisor = liveStatus && typeof liveStatus.lifecycleAdvisor === 'object' ? liveStatus.lifecycleAdvisor : {};
-  const advisorPoolSummary = advisor && typeof advisor.poolSummary === 'object' ? advisor.poolSummary : {};
-  const compositeHealthPct = typeof poolSummary.compositeHealthPct === 'number'
-    ? poolSummary.compositeHealthPct
-    : typeof advisorPoolSummary.compositeHealthPct === 'number'
-      ? advisorPoolSummary.compositeHealthPct
-      : typeof (liveStatus && liveStatus.poolUsage && liveStatus.poolUsage.compositeHealthPct) === 'number'
-        ? liveStatus.poolUsage.compositeHealthPct
-        : advisorMetric;
-  const advisorRecommendation = advisor && typeof advisor.recommendation === 'object' ? advisor.recommendation : {};
-  let recommendation = String(poolSummary.action || liveStatus?.capacityRecommendation || advisorRecommendation.message || '').trim();
-  let recommendationLevel = String(liveStatus?.capacityRecommendationLevel || poolSummary.state || advisorRecommendation.level || '').trim().toLowerCase();
+  let recommendation = String(liveStatus?.headline || liveStatus?.capacityRecommendation || poolSummary.action || advisorRecommendation.message || '').trim();
+  let recommendationLevel = String(liveStatus?.capacityRecommendationLevel || liveStatus?.severity || poolSummary.level || advisorRecommendation.level || '').trim().toLowerCase();
   if (!recommendation) recommendation = 'No new accounts needed.';
   if (!recommendationLevel) recommendationLevel = 'ok';
-  const poolUsage = liveStatus && typeof liveStatus.poolUsage === 'object' ? liveStatus.poolUsage : {};
-  const stateCounts = poolUsage && typeof poolUsage.stateCounts === 'object' ? poolUsage.stateCounts : {};
-  const readyCount = Number.isFinite(Number(poolSummary.fullyReadyCount)) ? Number(poolSummary.fullyReadyCount) : localReadyCount;
-  const healthyCount = Number.isFinite(Number(poolSummary.healthyCount)) ? Number(poolSummary.healthyCount) : localHealthyCount;
-  const exhaustedCount = (Number(stateCounts.exhausted || 0) + Number(stateCounts.hold || 0)) || localExhaustedCount;
   const drift = [];
-  const runtimeHead = routing.currentTarget || null;
-  const policyHead = routing.selectedTarget || runtimeHead || null;
-  const controlHead = runtimeHead || policyHead || null;
   const heads = [runtimeHead, policyHead, controlHead].filter(Boolean);
   if (heads.length > 1 && new Set(heads).size > 1) {
     drift.push(`runtime=${shortName(runtimeHead || 'none', 'none')}`);
     drift.push(`policy=${shortName(policyHead || 'none', 'none')}`);
     drift.push(`control=${shortName(controlHead || 'none', 'none')}`);
   }
+  const compositeHealthPct = typeof liveStatus?.poolUsage?.compositeHealthPct === 'number'
+    ? liveStatus.poolUsage.compositeHealthPct
+    : (typeof liveStatus?.raw?.poolUsage?.compositeHealthPct === 'number' ? liveStatus.raw.poolUsage.compositeHealthPct : null);
   return {
-    mode: 'AUTO',
-    statusLabel: 'AUTO',
+    mode: String(liveStatus?.mode || 'AUTO'),
+    statusLabel: String(liveStatus?.statusLabel || liveStatus?.mode || 'AUTO'),
     runtimeHead,
     policyHead,
     controlHead,
-    activeName: shortName(runtimeHead || 'none', 'none'),
+    activeName: shortName(runtimeHead || policyHead || controlHead || 'none', 'none'),
     summary: String((liveStatus && liveStatus.message) || 'OAUTH'),
     recommendation,
     recommendationLevel,
+    poolState: String(liveStatus?.poolState || ''),
     driftHeads: drift,
     readyCount,
     healthyCount,
@@ -505,12 +461,13 @@ function routerStatusSnapshot(liveStatus = null, ctx = {}) {
     reauthWarnCount,
     exhaustedCount,
     deadCount,
+    manualCheckCount,
     leaseCount,
     avg5,
     avgWeek,
     compositeHealthPct,
     rows,
-    raw: state,
+    raw: liveStatus?.raw || state,
   };
 }
 
@@ -891,7 +848,6 @@ async function ackTelegramCallback(ctx) {
 }
 
 export default function register(api) {
-  ACTIVE_API = api;
   api.registerCommand({
     name: 'oauth',
     nativeNames: { default: 'oauth' },

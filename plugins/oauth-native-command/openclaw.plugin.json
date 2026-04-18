@@ -2,7 +2,7 @@
   "id": "oauth-native-command",
   "name": "OAuth Native Command",
   "description": "Registers a native /oauth command that bypasses the LLM and forwards to the workspace OAuth router.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "properties": {

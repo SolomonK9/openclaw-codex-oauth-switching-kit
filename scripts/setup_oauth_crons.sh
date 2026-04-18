@@ -6,6 +6,15 @@ set -euo pipefail
 
 WORKSPACE="${1:-$(pwd)}"
 OPS_SCRIPTS="$WORKSPACE/ops/scripts"
+OPENCLAW_BIN="${OPENCLAW_BIN:-$(command -v openclaw || true)}"
+if [[ -z "$OPENCLAW_BIN" && -x "$HOME/.npm-global/bin/openclaw" ]]; then
+  OPENCLAW_BIN="$HOME/.npm-global/bin/openclaw"
+fi
+if [[ -z "$OPENCLAW_BIN" ]]; then
+  echo "[cron] error: openclaw executable not found" >&2
+  exit 127
+fi
+export OPENCLAW_BIN
 
 TICK_NAME="OAuth Pool Router Tick (5m live)"
 SYNC_NAME="OAuth Lease Sync (5m live)"
@@ -14,10 +23,11 @@ cron_job_count() {
   local target_name="$1"
   python3 - "$target_name" <<'PYCOUNT'
 import json
+import os
 import subprocess
 import sys
 name = sys.argv[1]
-proc = subprocess.run(['openclaw', 'cron', 'list', '--json'], text=True, capture_output=True)
+proc = subprocess.run([os.environ['OPENCLAW_BIN'], 'cron', 'list', '--json'], text=True, capture_output=True)
 if proc.returncode != 0:
     sys.stderr.write(proc.stderr)
     raise SystemExit(proc.returncode)
@@ -35,7 +45,7 @@ maybe_add_job() {
   count="$(cron_job_count "$name")"
   if [[ "$count" == "0" ]]; then
     echo "[cron] adding: $name"
-    openclaw cron add "$@" --json
+    "$OPENCLAW_BIN" cron add "$@" --json
     return 0
   fi
   if [[ "$count" == "1" ]]; then

@@ -9,10 +9,12 @@ from pathlib import Path
 from typing import Any, Dict
 from urllib.parse import parse_qs, urlparse
 
-WORKSPACE = Path(__file__).resolve().parents[3]
+from openclaw_resolver import resolve_telegram_target, resolve_workspace
+
+WORKSPACE = resolve_workspace(__file__)
 STATE_PATH = WORKSPACE / 'ops/state/oauth-telegram-handoff.json'
 DEFAULT_TIMEOUT_SECONDS = 15 * 60
-DEFAULT_TARGET = 'REPLACE_TELEGRAM_CHAT_ID'
+DEFAULT_TARGET = resolve_telegram_target(WORKSPACE)
 DELIVERY_STATE_PATH = WORKSPACE / 'ops/state/gateway-delivery-state.json'
 
 

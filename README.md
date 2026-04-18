@@ -98,6 +98,13 @@ It now includes:
 
 That means the package is now much closer to a **guided setup-first product** instead of a raw operator toolkit.
 
+This release hardens the package boundary further:
+- relocatable `oauth-routing` shim resolution
+- staged template/plugin asset install through the public CLI
+- `openclaw` binary resolution hardening across router, setup, cron, and onboarding helpers
+- Telegram-started `/oauth add` and `/oauth reauth` paths that return **terminal-only** completion commands instead of callback handoff
+- staged workspace resolution fixes for Telegram lifecycle helpers
+
 ---
 
 ## Quick start for Linux

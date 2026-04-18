@@ -14,11 +14,14 @@ import sys
 from pathlib import Path
 from typing import Iterable, List, Tuple
 
+from openclaw_resolver import OPENCLAW_BIN
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 DEFAULT_WORKSPACE = Path.home() / ".openclaw" / "workspace"
 PLUGIN_ID = "oauth-native-command"
 REQUIRED_SCRIPT_NAMES = [
+    "openclaw_resolver.py",
     "oauth_pool_router.py",
     "oauth_command_router.py",
     "oauth_lease_sync.py",
@@ -53,7 +56,7 @@ def run(cmd: List[str], *, cwd: Path | None = None, timeout: int | None = None) 
 
 def detect_prereqs() -> List[Tuple[str, bool, str]]:
     python3_path = shutil.which("python3")
-    openclaw_path = shutil.which("openclaw")
+    openclaw_path = OPENCLAW_BIN if Path(OPENCLAW_BIN).exists() else shutil.which("openclaw")
     return [
         ("python3", python3_path is not None, python3_path or "missing"),
         ("openclaw", openclaw_path is not None, openclaw_path or "missing"),
@@ -117,6 +120,17 @@ def install_plugin_package(workspace: Path) -> List[Tuple[str, str, Path]]:
         dest = paths["oauth_plugin"] / name
         status = copy_if_changed(src, dest)
         results.append((f"{PLUGIN_ID}/{name}", status, dest))
+    return results
+
+
+def install_templates(workspace: Path) -> List[Tuple[str, str, Path]]:
+    paths = workspace_paths(workspace)
+    results: List[Tuple[str, str, Path]] = []
+    for name in ["oauth-pool-config.template.json", "oauth-lease-project-map.template.json"]:
+        src = REPO_ROOT / "templates" / name
+        dest = paths["ops"] / "templates" / name
+        status = copy_if_changed(src, dest)
+        results.append((f"templates/{name}", status, dest))
     return results
 
 
@@ -251,7 +265,7 @@ def validate_router_status(workspace: Path) -> Tuple[bool, str]:
 
 
 def openclaw_cmd(profile: str | None = None) -> List[str]:
-    cmd = ["openclaw"]
+    cmd = [OPENCLAW_BIN]
     if profile:
         cmd.extend(["--profile", profile])
     return cmd
@@ -405,6 +419,7 @@ def install_workspace(workspace: Path, prompt_scheduler: bool = True) -> int:
     config_status = ensure_template(paths["config"], "oauth-pool-config.template.json")
     lease_status = ensure_template(paths["lease_map"], "oauth-lease-project-map.template.json")
     plugin_results = install_plugin_package(paths["workspace"])
+    template_results = install_templates(paths["workspace"])
     setup_status = copy_if_changed(REPO_ROOT / "scripts" / "setup_oauth_crons.sh", paths["scripts"] / "setup_oauth_crons.sh")
     os.chmod(paths["scripts"] / "setup_oauth_crons.sh", 0o755)
     shim_status = copy_if_changed(REPO_ROOT / "oauth-routing", paths["shim"])
@@ -417,6 +432,8 @@ def install_workspace(workspace: Path, prompt_scheduler: bool = True) -> int:
     info(f"- setup_oauth_crons.sh: {setup_status} -> {paths['scripts'] / 'setup_oauth_crons.sh'}")
     info(f"- oauth-pool-config.json: {config_status} -> {paths['config']}")
     info(f"- oauth-lease-project-map.json: {lease_status} -> {paths['lease_map']}")
+    for name, status, dest in template_results:
+        info(f"- {name}: {status} -> {dest}")
     for name, status, dest in plugin_results:
         info(f"- {name}: {status} -> {dest}")
     info(f"- oauth-routing shim: {shim_status} -> {paths['shim']}")

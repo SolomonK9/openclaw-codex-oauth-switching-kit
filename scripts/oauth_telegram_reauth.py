@@ -14,10 +14,13 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-WORKSPACE = Path(__file__).resolve().parents[3]
-BRIDGE = WORKSPACE / 'ops/scripts/oauth_telegram_bridge.py'
-ONBOARD = WORKSPACE / 'ops/scripts/onboard_oauth_account.py'
-DEFAULT_TELEGRAM_TARGET = 'REPLACE_TELEGRAM_CHAT_ID'
+from openclaw_resolver import OPENCLAW_BIN, resolve_telegram_target, resolve_workspace
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+WORKSPACE = resolve_workspace(__file__)
+BRIDGE = SCRIPT_DIR / 'oauth_telegram_bridge.py'
+ONBOARD = SCRIPT_DIR / 'onboard_oauth_account.py'
+DEFAULT_TELEGRAM_TARGET = resolve_telegram_target(WORKSPACE)
 OAUTH_URL_RE = re.compile(r'https://auth\.openai\.com/oauth/authorize\?[^\s]+')
 PROMPT_RE = re.compile(r'Paste the authorization code \(or full redirect URL\):')
 
@@ -79,7 +82,7 @@ def run(cmd: list[str], timeout: Optional[int] = None) -> Tuple[int, str, str]:
 
 def send_telegram(message: str) -> Dict[str, Any]:
     rc, out, err = run([
-        'openclaw', 'message', 'send', '--channel', 'telegram', '--target', DEFAULT_TELEGRAM_TARGET,
+        OPENCLAW_BIN, 'message', 'send', '--channel', 'telegram', '--target', DEFAULT_TELEGRAM_TARGET,
         '--message', message, '--json'
     ], timeout=60)
     try:
@@ -296,7 +299,10 @@ def start_login_session() -> Tuple[int, int]:
     pid, master_fd = pty.fork()
     if pid == 0:
         os.chdir(str(WORKSPACE))
-        os.execvp('openclaw', ['openclaw', 'models', 'auth', 'login', '--provider', 'openai-codex'])
+        cmd = [OPENCLAW_BIN, 'models', 'auth', 'login', '--provider', 'openai-codex']
+        if '/' in OPENCLAW_BIN:
+            os.execv(OPENCLAW_BIN, cmd)
+        os.execvp(OPENCLAW_BIN, cmd)
     return pid, master_fd
 
 
