@@ -5,28 +5,14 @@ from urllib import error as urllib_error, request as urllib_request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from openclaw_resolver import OPENCLAW_BIN, resolve_telegram_target
-
-def resolve_workspace() -> Path:
-    env_workspace = os.environ.get('OPENCLAW_WORKSPACE')
-    if env_workspace:
-        return Path(env_workspace).expanduser().resolve()
-    here = Path(__file__).resolve()
-    for candidate in [here.parent, *here.parents]:
-        ops_dir = candidate / 'ops'
-        if (ops_dir / 'scripts' / 'oauth_pool_router.py').exists() and (ops_dir / 'state').exists():
-            return candidate
-    return here.parents[3]
-
-
-WORKSPACE = resolve_workspace()
+WORKSPACE = Path(__file__).resolve().parents[3]
 OPENCLAW_HOME = Path.home() / '.openclaw'
 AUTH_PROFILES = OPENCLAW_HOME / 'agents' / 'main' / 'agent' / 'auth-profiles.json'
 POOL_CONFIG = WORKSPACE / 'ops/state/oauth-pool-config.json'
 POOL_STATE = WORKSPACE / 'ops/state/oauth-pool-state.json'
 ROUTER = WORKSPACE / 'ops/scripts/oauth_pool_router.py'
 ONBOARDING_LOCK = WORKSPACE / 'ops/state/onboarding-lock.json'
-DEFAULT_TELEGRAM_TARGET = resolve_telegram_target(WORKSPACE)
+DEFAULT_TELEGRAM_TARGET = 'REPLACE_TELEGRAM_CHAT_ID'
 CALLBACK_PORT = 1455
 
 _LOCK_HELD = False
@@ -336,18 +322,9 @@ def router_json(args: List[str], *, timeout: int, ok_codes: Tuple[int, ...] = (0
         msg = err or out or 'router command failed'
         if rc in ok_codes:
             try:
-                payload = json.loads(out) if out else {}
+                return {'ok': True, 'code': rc, 'payload': json.loads(out) if out else {}, 'stderr': err, 'attemptsUsed': idx + 1}
             except Exception:
                 return {'ok': False, 'code': rc, 'error': f'invalid router json: {out[:400]}', 'stdout': out[:400], 'attemptsUsed': idx + 1}
-            if str((payload or {}).get('skipped') or '').strip().lower() == 'lock_busy':
-                last_rc = rc
-                last_msg = 'router lock busy'
-                last_stdout = out
-                if idx == attempts - 1:
-                    break
-                time.sleep(0.75 + (idx * 1.25))
-                continue
-            return {'ok': True, 'code': rc, 'payload': payload, 'stderr': err, 'attemptsUsed': idx + 1}
         last_rc = rc
         last_msg = msg
         last_stdout = out
@@ -543,27 +520,6 @@ def run_status() -> Dict[str, Any]:
     return run_router_step('status', ['status', '--json'], timeout=180)
 
 
-def target_is_routable(target_row: Optional[Dict[str, Any]]) -> bool:
-    if not isinstance(target_row, dict):
-        return False
-    routing_state = str(target_row.get('routingState') or '').strip().upper()
-    if routing_state in {'READY', 'ROUTABLE'}:
-        return True
-    return bool(target_row.get('routableNow'))
-
-
-def should_send_success_alert(json_mode: bool) -> Tuple[bool, Optional[str]]:
-    if json_mode:
-        return False, 'json_mode'
-    try:
-        import sys
-        if not sys.stdout.isatty():
-            return False, 'non_interactive_stdout'
-    except Exception:
-        return False, 'stdout_tty_check_failed'
-    return True, None
-
-
 def run_onboarding_tail(profile_id: str) -> Dict[str, Any]:
     results: Dict[str, Any] = {}
     update_lock_phase('hygieneInitial')
@@ -598,7 +554,8 @@ def run_onboarding_tail(profile_id: str) -> Dict[str, Any]:
 
     status_payload = status.get('payload') or {}
     target_row = next((r for r in status_payload.get('accountInventory', []) if r.get('profileId') == profile_id), None)
-    if not target_is_routable(target_row):
+    routing_state = str((target_row or {}).get('routingState') or '').strip().upper() if isinstance(target_row, dict) else ''
+    if routing_state != 'READY':
         update_lock_phase('probe')
         probe = run_probe()
         results['probe'] = probe
@@ -616,9 +573,8 @@ def run_onboarding_tail(profile_id: str) -> Dict[str, Any]:
 def run_auth_add() -> Dict[str, Any]:
     print('Step 1/5: complete the OpenAI Codex OAuth flow in this terminal.')
     print('Finish the provider OAuth/device login for openai-codex, then return here.')
-    cmd = [OPENCLAW_BIN, 'models', 'auth', 'login', '--provider', 'openai-codex']
-    p = subprocess.run(cmd, cwd=str(WORKSPACE))
-    return {'returncode': p.returncode, 'provider': 'openai-codex', 'command': cmd}
+    p = subprocess.run(['openclaw', 'models', 'auth', 'login', '--provider', 'openai-codex'], cwd=str(WORKSPACE))
+    return {'returncode': p.returncode, 'provider': 'openai-codex', 'command': ['openclaw', 'models', 'auth', 'login', '--provider', 'openai-codex']}
 
 
 def render_final(payload: Dict[str, Any], json_mode: bool) -> None:
@@ -648,7 +604,7 @@ def send_success_alert(payload: Dict[str, Any]) -> Dict[str, Any]:
         f'Routing: {routing_state}\n'
         f'Verification: {verification or "VERIFIED"}'
     )
-    rc, out, err = run([OPENCLAW_BIN, 'message', 'send', '--channel', 'telegram', '--target', DEFAULT_TELEGRAM_TARGET, '--message', msg, '--json'], timeout=60)
+    rc, out, err = run(['openclaw', 'message', 'send', '--channel', 'telegram', '--target', DEFAULT_TELEGRAM_TARGET, '--message', msg, '--json'], timeout=60)
     try:
         parsed = json.loads(out) if out else {}
     except Exception:
@@ -817,7 +773,7 @@ def main() -> int:
         verify_ok = bool(verification.get('success'))
         routing_state = str((target_row or {}).get('routingState') or '').strip().upper() if isinstance(target_row, dict) else ''
         target_account_id = str((target_row or {}).get('accountId') or (target_row or {}).get('providerAccountId') or auth_profile_identity(profile_id) or '').strip()
-        ready_ok = bool(target_row) and target_is_routable(target_row) and bool(target_account_id)
+        ready_ok = bool(target_row) and routing_state == 'READY' and bool(target_account_id)
         final_ok = verify_ok and ready_ok
 
         if final_ok:
@@ -877,12 +833,8 @@ def main() -> int:
             'nextStep': next_step,
             'detection': detection,
         }
-        alert_ok, alert_skip_reason = should_send_success_alert(args.json)
         if final_ok:
-            if alert_ok:
-                result['successAlert'] = send_success_alert(result)
-            else:
-                result['successAlert'] = {'ok': True, 'skipped': True, 'reason': alert_skip_reason}
+            result['successAlert'] = send_success_alert(result)
         progress('Onboarding tail complete.')
         render_final(result, args.json)
         return 0 if final_ok else 5
