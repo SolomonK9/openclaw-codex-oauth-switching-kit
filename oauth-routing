@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [[ -f "$SCRIPT_DIR/scripts/oauth_routing_cli.py" ]]; then
+  CLI_PATH="$SCRIPT_DIR/scripts/oauth_routing_cli.py"
+elif [[ -f "$SCRIPT_DIR/../scripts/oauth_routing_cli.py" ]]; then
+  CLI_PATH="$SCRIPT_DIR/../scripts/oauth_routing_cli.py"
+else
+  echo "[error] oauth_routing_cli.py not found relative to $SCRIPT_DIR" >&2
+  exit 1
+fi
+exec python3 "$CLI_PATH" "$@"

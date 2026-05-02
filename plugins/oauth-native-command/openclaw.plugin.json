@@ -1,0 +1,37 @@
+{
+  "id": "oauth-native-command",
+  "name": "OAuth Native Command",
+  "description": "Registers a native /oauth command that bypasses the LLM and forwards to the workspace OAuth router.",
+  "version": "0.2.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "workspacePath": {
+        "type": "string",
+        "default": ""
+      },
+      "telegramSenderIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "telegramChatIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      },
+      "discordChannelIds": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "default": []
+      }
+    },
+    "additionalProperties": false
+  }
+}
